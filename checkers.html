@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шашки</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1a1a2e;overflow:hidden}
+.wrap{display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;gap:20px;padding:10px}
+.board-col{display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
+.board{
+  display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);
+  border:3px solid #8B4513;border-radius:6px;
+  box-shadow:0 0 30px rgba(0,0,0,.8);background:#3e2723;
+  width:min(calc(100vh - 132px), calc(100vw - 250px), 600px);
+  height:min(calc(100vh - 132px), calc(100vw - 250px), 600px);
+}
+/* Без панели картинок доска занимает почти весь экран */
+.wrap.solo .board{
+  width:min(calc(100vh - 132px), calc(100vw - 60px), 660px);
+  height:min(calc(100vh - 132px), calc(100vw - 60px), 660px);
+}
+/* ── Координаты как у настоящей доски ── */
+.board-frame{display:flex;align-items:stretch}
+.coords-side{
+  display:flex;flex-direction:column;justify-content:space-around;
+  width:18px;font-size:.75em;color:#d4a574;font-weight:bold;
+}
+.coords-side span{display:flex;align-items:center;justify-content:center}
+.coords-row{
+  display:flex;width:100%;font-size:.75em;color:#d4a574;font-weight:bold;
+  padding:1px 0;
+}
+.coords-row i{width:18px}
+.coords-row span{flex:1;text-align:center;font-style:normal}
+.cell{display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.cell.light{background:#f0d9b5}.cell.dark{background:#b58863}
+.cell .hl{position:absolute;inset:0;pointer-events:none;z-index:2}
+.cell.sel .hl{box-shadow:inset 0 0 0 3px #e94560;background:rgba(233,69,96,.08)}
+.cell.target .hl{box-shadow:inset 0 0 0 3px #4ecca3;background:rgba(78,204,163,.15)}
+.cell.lastmv-from .hl{background:rgba(255,215,0,.18);box-shadow:inset 0 0 0 2px rgba(255,215,0,.5)}
+.cell.lastmv-to .hl{background:rgba(255,215,0,.32);box-shadow:inset 0 0 0 2px rgba(255,215,0,.85)}
+.cell.hint-from .hl{box-shadow:inset 0 0 0 3px #3aa0ff;background:rgba(58,160,255,.12)}
+.cell.hint-to .hl{box-shadow:inset 0 0 0 3px rgba(58,160,255,.7);background:rgba(58,160,255,.22)}
+.piece{width:75%;height:75%;border-radius:50%;position:relative;z-index:1;
+  transition:transform .2s;box-shadow:0 3px 6px rgba(0,0,0,.5)}
+.piece svg{display:block;width:100%;height:100%}
+.piece.dead{opacity:.35;filter:grayscale(.85)}
+.cell:hover .piece{transform:scale(1.08)}
+.cell.mustcap .piece{animation:mustCapPulse .75s ease-in-out infinite}
+@keyframes mustCapPulse{0%,100%{box-shadow:0 0 0 3px rgba(233,69,96,.7)}50%{box-shadow:0 0 0 4px rgba(255,120,50,1),0 0 18px 6px rgba(255,120,50,.7)}}
+.piece.multicap{animation:goldPulse .9s infinite}
+@keyframes goldPulse{0%,100%{box-shadow:0 0 6px 3px rgba(255,215,0,.5)}50%{box-shadow:0 0 22px 7px rgba(255,215,0,.95)}}
+@keyframes aiCapFlash{0%{transform:scale(1);opacity:1}40%{transform:scale(1.4);filter:brightness(3) saturate(0)}100%{transform:scale(0);opacity:0}}
+.piece.ai-eaten{animation:aiCapFlash .45s ease-out forwards}
+@keyframes aiMoveIn{0%{transform:scale(.6);opacity:.4}100%{transform:scale(1);opacity:1}}
+.piece.ai-moved{animation:aiMoveIn .3s ease-out}
+.cell.canmove .piece{box-shadow:0 0 0 2px rgba(255,215,0,.6),0 3px 6px rgba(0,0,0,.5)}
+.status-bar{color:#4ecca3;font-size:.88em;font-weight:bold;text-align:center;min-height:1.3em}
+.status-bar.ai-turn{color:#e94560}
+
+/* ── Кнопки управления ── */
+.ctrl-row{display:flex;gap:8px}
+.ctrl-row.hidden{display:none}
+.ctrl-btn{
+  padding:6px 14px;background:rgba(255,255,255,.08);color:#ccc;
+  border:1px solid rgba(255,255,255,.18);border-radius:7px;
+  font-size:.8em;cursor:pointer;transition:background .2s,color .2s;
+}
+.ctrl-btn:hover{background:rgba(78,204,163,.18);color:#4ecca3;border-color:#4ecca3}
+
+/* ── Мобильная вёрстка ── */
+@media (max-width:700px){
+  html,body{overflow:auto;height:auto;min-height:100%}
+  .wrap{flex-direction:column;height:auto;min-height:100vh;gap:14px;padding:12px;justify-content:flex-start}
+  .board{
+    width:min(calc(94vw - 40px),calc(100vh - 220px));
+    height:min(calc(94vw - 40px),calc(100vh - 220px));
+  }
+  .wrap.solo .board{
+    width:min(calc(94vw - 40px),calc(100vh - 220px));
+    height:min(calc(94vw - 40px),calc(100vh - 220px));
+  }
+  .logos-panel{max-height:none;width:94vw;grid-template-columns:repeat(auto-fill,50px);justify-content:center;position:static}
+  .logos-panel.hidden{display:none}
+  .pic-col{width:min(94vw,320px);position:static}
+  .pic-col.hidden{display:none}
+}
+
+
+/* ── Панель выбора: матрица логотипов 3 колонки ── */
+.logos-panel{
+  display:grid;grid-template-columns:repeat(3,50px);gap:10px;
+  align-content:start;flex-shrink:0;
+  max-height:calc(100vh - 40px);overflow-y:auto;padding:4px;
+  scrollbar-width:thin;scrollbar-color:#444 transparent;
+  transition:opacity .35s;
+}
+.logos-panel.hidden{opacity:0;pointer-events:none;position:absolute;left:-9999px}
+.logo-btn{
+  width:50px;height:50px;object-fit:cover;border-radius:8px;
+  cursor:pointer;border:2px solid rgba(255,255,255,.15);
+  transition:border-color .2s,box-shadow .2s,transform .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+.logo-btn:hover{border-color:#4ecca3;box-shadow:0 0 12px rgba(78,204,163,.6);transform:scale(1.1)}
+.logos-loading{color:#888;font-size:.82em;grid-column:span 3;text-align:center;padding:8px 0}
+
+/* ── Игровая панель (картинка из каталога) ── */
+.pic-col{
+  display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;
+  width:min(calc((100vh - 80px)*.62),calc((100vw - 220px)*.62),320px);
+  transition:opacity .35s;
+}
+.pic-col.hidden{opacity:0;pointer-events:none;position:absolute;left:-9999px}
+.pic-wrap{width:100%;border-radius:10px;overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.12);background:#111;
+  position:relative}
+.pic-wrap img{display:block;width:100%;height:auto;
+  opacity:0;transition:opacity .7s ease;position:absolute;top:0;left:0}
+.pic-wrap img.active{opacity:1;position:relative}
+.pic-caption{color:#d4a574;font-size:.78em;text-align:center;font-style:italic;
+  line-height:1.4;padding:0 4px}
+
+/* ── Галерея финала ── */
+.gallery-overlay{
+  position:fixed;inset:0;background:rgba(8,8,18,.93);
+  display:flex;align-items:center;justify-content:center;
+  z-index:200;opacity:0;pointer-events:none;transition:opacity .5s;
+}
+.gallery-overlay.visible{opacity:1;pointer-events:all}
+.gallery-box{
+  background:#16213e;border:2px solid #4ecca3;border-radius:14px;
+  padding:24px 28px;max-width:min(92vw,780px);max-height:88vh;
+  overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:16px;
+  box-shadow:0 0 70px rgba(78,204,163,.2);
+}
+.gallery-title{color:#ffd700;font-size:1.15em;font-weight:bold;text-align:center;letter-spacing:.02em}
+.gallery-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));
+  gap:8px;width:100%;
+}
+.gallery-grid img{
+  width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:7px;
+  border:2px solid rgba(255,255,255,.1);box-shadow:0 2px 10px rgba(0,0,0,.5);
+  transition:transform .2s,box-shadow .2s;cursor:default;
+}
+.gallery-grid img:hover{transform:scale(1.04);box-shadow:0 4px 18px rgba(0,0,0,.7)}
+.gallery-btn{
+  padding:11px 30px;background:#4ecca3;color:#0d1117;
+  border:none;border-radius:8px;font-size:.95em;font-weight:bold;
+  cursor:pointer;transition:background .2s,transform .1s;margin-top:4px;
+}
+.gallery-btn:hover{background:#6ef5d0;transform:scale(1.04)}
+
+/* ── Лайтбокс ── */
+.lightbox{
+  position:fixed;inset:0;background:rgba(0,0,0,.92);
+  display:flex;align-items:center;justify-content:center;
+  z-index:300;opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.lightbox.visible{opacity:1;pointer-events:all}
+.lightbox img{
+  max-width:90vw;max-height:90vh;object-fit:contain;
+  border-radius:8px;box-shadow:0 0 60px rgba(0,0,0,.8);
+  transition:opacity .25s;
+}
+.lightbox-close{
+  position:fixed;top:18px;right:24px;font-size:2em;line-height:1;
+  color:#fff;cursor:pointer;opacity:.7;transition:opacity .2s;z-index:301;
+  background:none;border:none;
+}
+.lightbox-close:hover{opacity:1}
+.lightbox-prev,.lightbox-next{
+  position:fixed;top:50%;transform:translateY(-50%);
+  font-size:2.2em;color:#fff;cursor:pointer;opacity:.6;
+  transition:opacity .2s;background:none;border:none;z-index:301;
+  padding:10px;
+}
+.lightbox-prev{left:12px}.lightbox-next{right:12px}
+.lightbox-prev:hover,.lightbox-next:hover{opacity:1}
+
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:0}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="board-col">
+    <div class="coords-row"><i></i><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span><i></i></div>
+    <div class="board-frame">
+      <div class="coords-side"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+      <div class="board" id="board"></div>
+      <div class="coords-side"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+    </div>
+    <div class="coords-row"><i></i><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span><i></i></div>
+    <div class="status-bar" id="status"></div>
+    <div class="ctrl-row hidden" id="ctrlRow">
+      <button class="ctrl-btn" id="btnBack">← К выбору</button>
+      <button class="ctrl-btn" id="btnRestart">⟳ Заново</button>
+      <button class="ctrl-btn" id="btnHint" title="Лучший ход за белых">💡</button>
+      <button class="ctrl-btn" id="btnLog" title="Лог ходов для разбора">📋 Лог</button>
+    </div>
+  </div>
+
+  <!-- Экран выбора: матрица логотипов -->
+  <div class="logos-panel" id="logosPanel">
+    <div class="logos-loading" id="logosLoading">Поиск моделей…</div>
+  </div>
+
+  <!-- Игровая панель: картинка из каталога -->
+  <div class="pic-col hidden" id="picCol">
+    <div class="pic-wrap" id="picWrap"></div>
+    <div class="pic-caption" id="pic-caption"></div>
+  </div>
+</div>
+
+<!-- Галерея финала -->
+<div class="gallery-overlay" id="galleryOverlay">
+  <div class="gallery-box">
+    <div class="gallery-title">&#127942; Все картинки открыты!</div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+    <button class="gallery-btn" id="galleryBtn">Выбрать другую игру</button>
+  </div>
+</div>
+
+<!-- Лог партии -->
+<div class="gallery-overlay" id="logOverlay">
+  <div class="gallery-box" style="width:min(92vw,780px)">
+    <div class="gallery-title">📋 Лог ходов</div>
+    <textarea id="logText" readonly spellcheck="false"
+      style="width:100%;height:50vh;background:#0d1117;color:#c9d1d9;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:10px;font:12px/1.5 monospace;resize:vertical"></textarea>
+    <div style="display:flex;gap:10px">
+      <button class="gallery-btn" id="logCopy">Скопировать</button>
+      <button class="gallery-btn" id="logClose" style="background:#666;color:#eee">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- Лайтбокс -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lbClose">&#x2715;</button>
+  <button class="lightbox-prev" id="lbPrev">&#8249;</button>
+  <img id="lbImg" src="" alt="">
+  <button class="lightbox-next" id="lbNext">&#8250;</button>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   НАСТРОЙКИ
+   ═══════════════════════════════════════════════════════ */
+const SETTINGS = {
+  folder: "media/",
+  // Резервный список каталогов (если сервер не отдаёт листинг)
+  fallbackDirs: [],
+};
+/* ═══════════════════════════════════════════════════════ */
+
+// ── Состояние ──
+let appState = 'select'; // 'select' | 'play'
+let models = [];
+let activeModelIdx = 0;
+let imgIdx = 0;
+
+function activeModel(){ return models[activeModelIdx] || null; }
+
+// ── Утилита: проверить загрузку img (без кэш-бастера — пусть браузер кэширует) ──
+function tryImg(url){
+  return new Promise(res=>{
+    const i=new Image();
+    i.onload=()=>res(true);
+    i.onerror=()=>res(false);
+    i.src=url;
+  });
+}
+
+// ── Прогресс открытых картинок (переживает перезагрузку страницы) ──
+function loadProgress(){
+  try{return JSON.parse(localStorage.getItem('checkersProgress')||'{}')}catch(_){return{}}
+}
+function saveProgress(dir,idx){
+  try{
+    const p=loadProgress();p[dir]=idx;
+    localStorage.setItem('checkersProgress',JSON.stringify(p));
+  }catch(_){/* приватный режим и т.п. — просто без сохранения */}
+}
+
+// ── Сканируем картинки внутри каталога ──
+async function scanModelImages(dir){
+  const base=SETTINGS.folder+dir+'/';
+  let files=[];
+
+  // Сначала пробуем листинг директории
+  try{
+    const r=await fetch(base);
+    if(r.ok){
+      const html=await r.text();
+      const re=/href="([^"/?#]+\.(?:jpe?g|png|webp|gif))"/gi;
+      let m;
+      while((m=re.exec(html))!==null){
+        const fn=m[1];
+        if(fn.toLowerCase()!=='logo.jpg')files.push(fn);
+      }
+    }
+  }catch(_){}
+
+  // Если листинг пуст — проверяем 00.jpg…99.jpg параллельно
+  // (без раннего выхода, чтобы не пропустить файлы с пропусками в нумерации)
+  if(!files.length){
+    const candidates=Array.from({length:100},(_,i)=>String(i).padStart(2,'0')+'.jpg');
+    const results=await Promise.all(
+      candidates.map(async fn=>(await tryImg(base+fn))?fn:null)
+    );
+    files=results.filter(Boolean);
+  }
+
+  return files.map(fn=>({img:dir+'/'+fn,caption:''}));
+}
+
+// ── Обнаружение моделей ──
+// Для публикации в интернете: положите рядом media/models.json вида
+//   {"model1":["00.jpg","01.jpg"], "model2":["00.jpg"]}
+// — один запрос вместо сотен проб. Автопоиск остаётся фолбэком для локалки.
+async function initModels(){
+  models=[];
+  try{
+    const r=await fetch(SETTINGS.folder+'models.json',{cache:'no-cache'});
+    if(r.ok){
+      const data=await r.json();
+      // строгая валидация имён из манифеста: ни слэшей, ни кавычек, ни ".."
+      const okDir=s=>typeof s==='string'&&/^[\w\- ]+$/.test(s);
+      const okFile=s=>typeof s==='string'&&/^[\w\- ]+\.(jpe?g|png|webp|gif)$/i.test(s);
+      if(Array.isArray(data)){
+        for(const dir of data){
+          if(!okDir(dir))continue;
+          const images=await scanModelImages(dir);
+          if(images.length)models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+        }
+      }else if(data&&typeof data==='object'){
+        for(const dir of Object.keys(data)){
+          if(!okDir(dir))continue;
+          const images=(Array.isArray(data[dir])?data[dir]:[])
+            .filter(okFile)
+            .filter(f=>f.toLowerCase()!=='logo.jpg')
+            .map(fn=>({img:dir+'/'+fn,caption:''}));
+          if(images.length)models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+        }
+      }
+      if(models.length){renderLogoPanel();return;}
+    }
+  }catch(_){}
+  // Фолбэк: автопоиск каталогов model1..model99 (локальное использование)
+  const candidates=new Set(SETTINGS.fallbackDirs||[]);
+  for(let i=1;i<=99;i++){
+    candidates.add('model'+i);
+    candidates.add('model'+String(i).padStart(2,'0'));
+    candidates.add('model'+String(i).padStart(3,'0'));
+  }
+  const checks=await Promise.all([...candidates].map(async dir=>{
+    const logoUrl=SETTINGS.folder+dir+'/logo.jpg';
+    return (await tryImg(logoUrl))?{dir,logoUrl}:null;
+  }));
+  const found=checks.filter(Boolean)
+    .sort((a,b)=>a.dir.localeCompare(b.dir,undefined,{numeric:true}));
+  for(const info of found){
+    const images=await scanModelImages(info.dir);
+    if(!images.length)continue;
+    models.push({dir:info.dir,logoUrl:info.logoUrl,images});
+  }
+  renderLogoPanel();
+}
+
+// ── Рисуем матрицу логотипов ──
+function renderLogoPanel(){
+  const panel=document.getElementById('logosPanel');
+  panel.innerHTML='';
+  if(!models.length){
+    const box=document.createElement('div');
+    box.className='logos-loading';
+    box.innerHTML='Каталоги с картинками не найдены.<br><br>'
+      +'Ожидаемая структура рядом с HTML-файлом:<br>'
+      +'<code>media/model1/logo.jpg</code><br>'
+      +'<code>media/model1/00.jpg, 01.jpg…</code><br><br>';
+    const btn=document.createElement('button');
+    btn.className='gallery-btn';
+    btn.textContent='Играть без картинок';
+    btn.addEventListener('click',()=>startPlay(-1));
+    panel.appendChild(box);
+    box.appendChild(btn);
+    return;
+  }
+  models.forEach((m,i)=>{
+    const img=document.createElement('img');
+    img.src=m.logoUrl;
+    img.alt=m.dir;
+    img.title=m.dir;
+    img.className='logo-btn';
+    img.addEventListener('click',()=>startPlay(i));
+    panel.appendChild(img);
+  });
+}
+
+// ── Переход: выбор → игра (idx=-1 — без картинок) ──
+function startPlay(idx){
+  activeModelIdx=idx;
+  const m=idx>=0?models[idx]:null;
+  const saved=m?(loadProgress()[m.dir]||0):0;
+  imgIdx=m?Math.min(saved,m.images.length-1):0;
+  appState='play';
+  document.getElementById('logosPanel').classList.add('hidden');
+  document.querySelector('.wrap').classList.toggle('solo',!m);
+  if(m){
+    buildPicPanel();
+    if(imgIdx>0)setImage(imgIdx);
+    document.getElementById('picCol').classList.remove('hidden');
+  }
+  document.getElementById('ctrlRow').classList.remove('hidden');
+  setStatus('player');
+  startNewGame();
+}
+
+// ── Переход: игра → выбор ──
+function goToSelect(){
+  appState='select';
+  document.querySelector('.wrap').classList.remove('solo');
+  document.getElementById('picCol').classList.add('hidden');
+  document.getElementById('ctrlRow').classList.add('hidden');
+  document.getElementById('logosPanel').classList.remove('hidden');
+  setStatus('');
+  setupGame();render();
+}
+
+// ── Строим теги img панели картинок ──
+function buildPicPanel(){
+  const m=activeModel();
+  const wrap=document.getElementById('picWrap');
+  wrap.innerHTML='';
+  if(!m)return;
+  m.images.forEach((item,i)=>{
+    const el=document.createElement('img');
+    el.id='img-'+i;
+    el.src=SETTINGS.folder+item.img;
+    el.alt=item.caption||'';
+    if(i===0){el.classList.add('active');el.style.cssText='position:relative;opacity:1';}
+    else el.style.cssText='position:absolute;top:0;left:0;opacity:0';
+    wrap.appendChild(el);
+  });
+  document.getElementById('pic-caption').textContent=m.images[0]?.caption||'';
+}
+
+// ── Показываем нужную картинку ──
+function setImage(idx){
+  const m=activeModel();if(!m)return;
+  const total=m.images.length;
+  idx=((idx%total)+total)%total;
+  m.images.forEach((_,i)=>{
+    const el=document.getElementById('img-'+i);if(!el)return;
+    if(i===idx){
+      el.style.position='relative';el.style.opacity='0';
+      el.classList.add('active');
+      requestAnimationFrame(()=>{el.style.opacity='1';});
+    }else{
+      el.classList.remove('active');
+      el.style.position='absolute';el.style.opacity='0';
+    }
+  });
+  document.getElementById('pic-caption').textContent=m.images[idx]?.caption||'';
+}
+
+// ── Галерея финала ──
+let galleryUrls = [];
+let lbIdx = 0;
+
+function showGallery(){
+  const m=activeModel();
+  const grid=document.getElementById('galleryGrid');
+  grid.innerHTML='';
+  galleryUrls=[];
+  if(m){
+    m.images.forEach((item,i)=>{
+      const url=SETTINGS.folder+item.img;
+      galleryUrls.push(url);
+      const img=document.createElement('img');
+      img.src=url;img.alt='';
+      img.style.cursor='zoom-in';
+      img.addEventListener('click',()=>openLightbox(i));
+      grid.appendChild(img);
+    });
+  }
+  document.getElementById('galleryOverlay').classList.add('visible');
+}
+
+// ── Лайтбокс ──
+function openLightbox(idx){
+  lbIdx=idx;
+  const lb=document.getElementById('lightbox');
+  const img=document.getElementById('lbImg');
+  img.style.opacity='0';
+  img.src=galleryUrls[lbIdx];
+  img.onload=()=>{img.style.opacity='1';};
+  lb.classList.add('visible');
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('visible');
+}
+function lbMove(dir){
+  lbIdx=(lbIdx+dir+galleryUrls.length)%galleryUrls.length;
+  const img=document.getElementById('lbImg');
+  img.style.opacity='0';
+  setTimeout(()=>{img.src=galleryUrls[lbIdx];img.onload=()=>{img.style.opacity='1';};},150);
+}
+document.getElementById('lbClose').addEventListener('click',closeLightbox);
+document.getElementById('lbPrev').addEventListener('click',()=>lbMove(-1));
+document.getElementById('lbNext').addEventListener('click',()=>lbMove(1));
+document.getElementById('lightbox').addEventListener('click',e=>{
+  if(e.target===document.getElementById('lightbox'))closeLightbox();
+});
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('lightbox').classList.contains('visible'))return;
+  if(e.key==='ArrowLeft')lbMove(-1);
+  else if(e.key==='ArrowRight')lbMove(1);
+  else if(e.key==='Escape')closeLightbox();
+});
+document.getElementById('galleryBtn').addEventListener('click',()=>{
+  document.getElementById('galleryOverlay').classList.remove('visible');
+  goToSelect();
+});
+
+
+// ══════════════════════════════════════════════════════
+// ── Движок шашек ──
+// ══════════════════════════════════════════════════════
+function cloneBoard(b){return b.map(r=>[...r])}
+function inB(r,c){return r>=0&&r<8&&c>=0&&c<8}
+function isKing(p){return Math.abs(p)===2}
+function sideOf(p){return p>0?1:-1}
+
+function rawCaptures(board,r,c,beaten){
+  const p=board[r][c],pl=sideOf(p),res=[];
+  // Русские шашки: простая бьёт во все 4 стороны
+  const dirs=[[-1,-1],[-1,1],[1,-1],[1,1]];
+  for(const [dr,dc] of dirs){
+    if(isKing(p)){
+      for(let d=1;d<8;d++){
+        const mr=r+dr*d,mc=c+dc*d;
+        if(!inB(mr,mc))break;
+        if(board[mr][mc]===0)continue;
+        if(sideOf(board[mr][mc])===pl)break;
+        const key=mr+","+mc;
+        if(beaten.includes(key))break;
+        for(let l=d+1;l<8;l++){
+          const nr=r+dr*l,nc=c+dc*l;
+          if(!inB(nr,nc)||board[nr][nc]!==0)break;
+          res.push({from:{r,c},to:{r:nr,c:nc},cap:{r:mr,c:mc}});
+        }
+        break;
+      }
+    }else{
+      const mr=r+dr,mc=c+dc,nr=r+2*dr,nc=c+2*dc;
+      if(!inB(nr,nc))continue;
+      if(board[nr][nc]!==0)continue;
+      if(!inB(mr,mc)||board[mr][mc]===0)continue;
+      if(sideOf(board[mr][mc])===pl)continue;
+      const key=mr+","+mc;
+      if(beaten.includes(key))continue;
+      res.push({from:{r,c},to:{r:nr,c:nc},cap:{r:mr,c:mc}});
+    }
+  }
+  return res;
+}
+
+// Правило русских шашек: если хотя бы с одного поля за побитой шашкой
+// возможно продолжение боя, дамка обязана встать именно на такое поле.
+function getCaptures(board,r,c,beaten){
+  const raw=rawCaptures(board,r,c,beaten);
+  const p=board[r][c];
+  if(!isKing(p)||!raw.length)return raw; // у простой поле приземления одно
+  const groups={};
+  for(const m of raw){
+    const k=m.cap.r+","+m.cap.c;
+    (groups[k]=groups[k]||[]).push(m);
+  }
+  const res=[];
+  for(const k in groups){
+    const g=groups[k];
+    const cont=g.filter(m=>{
+      const nb=cloneBoard(board);
+      nb[m.from.r][m.from.c]=0;nb[m.to.r][m.to.c]=p;
+      return rawCaptures(nb,m.to.r,m.to.c,[...beaten,k]).length>0;
+    });
+    res.push(...(cont.length?cont:g));
+  }
+  return res;
+}
+
+function getAllMoves(board,player){
+  const caps=[];
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++)
+    if(board[r][c]!==0&&sideOf(board[r][c])===player)
+      for(const cap of getCaptures(board,r,c,[]))caps.push(cap);
+  if(caps.length)return caps;
+  const moves=[],fwd=player===1?[[-1,-1],[-1,1]]:[[1,-1],[1,1]];
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const p=board[r][c];
+      if(p===0||sideOf(p)!==player)continue;
+      if(isKing(p)){
+        for(const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]])
+          for(let d=1;d<8;d++){
+            const nr=r+dr*d,nc=c+dc*d;
+            if(!inB(nr,nc)||board[nr][nc]!==0)break;
+            moves.push({from:{r,c},to:{r:nr,c:nc},cap:null});
+          }
+      }else{
+        for(const [dr,dc] of fwd){
+          const nr=r+dr,nc=c+dc;
+          if(inB(nr,nc)&&board[nr][nc]===0)moves.push({from:{r,c},to:{r:nr,c:nc},cap:null});
+        }
+      }
+    }
+  }
+  return moves;
+}
+
+// Турецкий удар: побитая шашка НЕ снимается сразу — она остаётся
+// на доске как препятствие до конца всей серии боя.
+function applyCapture(board,move){
+  const p=board[move.from.r][move.from.c];
+  board[move.from.r][move.from.c]=0;
+  board[move.to.r][move.to.c]=p;
+  if(p===1&&move.to.r===0)board[move.to.r][move.to.c]=2;
+  if(p===-1&&move.to.r===7)board[move.to.r][move.to.c]=-2;
+}
+// Снять все побитые шашки по завершении серии
+function removeBeaten(board,beaten){
+  for(const k of beaten){
+    const [r,c]=k.split(',').map(Number);
+    board[r][c]=0;
+  }
+}
+function applyNormal(board,move){
+  const p=board[move.from.r][move.from.c];
+  board[move.from.r][move.from.c]=0;
+  board[move.to.r][move.to.c]=p;
+  if(p===1&&move.to.r===0)board[move.to.r][move.to.c]=2;
+  if(p===-1&&move.to.r===7)board[move.to.r][move.to.c]=-2;
+}
+function checkEnd(board){
+  let wc=0,bc=0;
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){if(board[r][c]>0)wc++;if(board[r][c]<0)bc++;}
+  if(wc===0)return -1; if(bc===0)return 1;
+  if(!getAllMoves(board,1).length)return -1;
+  if(!getAllMoves(board,-1).length)return 1;
+  return 0;
+}
+// ══════════════════════════════════════════════════════
+// ── Движок соперника: макроходы, эвристика, minimax ──
+// ══════════════════════════════════════════════════════
+
+// Макроход = либо тихий ход {from,to,cap:null},
+// либо ПОЛНАЯ серия взятий {steps:[...], caps:[ключи побитых]}.
+// Серия — один неделимый ход дерева поиска (фикс бага v2,
+// где очередь передавалась противнику после каждого прыжка).
+function getMacroMoves(board,player){
+  const macros=[];
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const p=board[r][c];
+    if(p===0||sideOf(p)!==player)continue;
+    for(const f of getCaptures(board,r,c,[])){
+      const nb=cloneBoard(board);
+      applyCapture(nb,f);
+      dfsChain(nb,f.to,[f.cap.r+","+f.cap.c],[f],macros);
+    }
+  }
+  if(macros.length)return macros;
+  return getAllMoves(board,player); // тихие ходы (взятий нет)
+}
+function dfsChain(board,pos,beaten,steps,out){
+  const next=getCaptures(board,pos.r,pos.c,beaten);
+  if(!next.length){
+    out.push({steps:steps.slice(),caps:beaten.slice(),from:steps[0].from,to:pos,cap:true});
+    return;
+  }
+  for(const m of next){
+    const nb=cloneBoard(board);
+    applyCapture(nb,m);
+    dfsChain(nb,m.to,[...beaten,m.cap.r+","+m.cap.c],[...steps,m],out);
+  }
+}
+function applyMacro(board,m){
+  if(m.steps){
+    for(const s of m.steps)applyCapture(board,s);
+    removeBeaten(board,m.caps);
+  }else applyNormal(board,m);
+}
+
+// ── Оценочная функция (перенос из v2) ──
+function evaluate(board){
+  let s=0,wCount=0,bCount=0,wKings=0,bKings=0;
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const p=board[r][c];
+      if(p===0)continue;
+      const black=p<0,king=isKing(p);
+      if(black){bCount++;if(king)bKings++;}
+      else{wCount++;if(king)wKings++;}
+      let val=king?9:3;
+      if(!king)val+=black?(r/7)*2.5:((7-r)/7)*2.5;
+      if(r>=3&&r<=4&&c>=3&&c<=4)val+=0.8;
+      else if(r>=2&&r<=5&&c>=2&&c<=5)val+=0.4;
+      if(black&&r===0)val+=0.6;
+      if(!black&&r===7)val+=0.6;
+      if(!king&&(c===0||c===7))val-=0.5;
+      if(king){
+        let mob=0;
+        for(const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]])
+          for(let d=1;d<8;d++){
+            if(!inB(r+dr*d,c+dc*d)||board[r+dr*d][c+dc*d]!==0)break;
+            mob++;
+          }
+        val+=mob*0.15;
+      }
+      s+=black?-val:val;
+    }
+  }
+  const total=wCount+bCount;
+  if(total<=6){
+    s+=(bKings-wKings)*4;
+    if(bCount>0&&wCount>0){
+      for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+        if(board[r][c]>=0)continue;
+        let minDist=14;
+        for(let r2=0;r2<8;r2++)for(let c2=0;c2<8;c2++){
+          if(board[r2][c2]<=0)continue;
+          minDist=Math.min(minDist,Math.abs(r-r2)+Math.abs(c-c2));
+        }
+        s+=minDist*0.1; // чем дальше чёрные от белых, тем хуже для чёрных: движок мотивирует сближаться
+      }
+    }
+  }
+  return s;
+}
+
+// Длинные серии первыми — лучше отсечение
+function sortMacros(ms){
+  return ms.slice().sort((a,b)=>(b.steps?b.steps.length:0)-(a.steps?a.steps.length:0));
+}
+
+let MM_DEADLINE=0,MM_CUTOFF=false; // жёсткий потолок и флаг «оценка испорчена срезом»
+function minimax(board,depth,alpha,beta,isMax){
+  if(Date.now()>MM_DEADLINE){MM_CUTOFF=true;return evaluate(board);}
+  if(depth<=0)return evaluate(board);
+  const player=isMax?1:-1;
+  const moves=sortMacros(getMacroMoves(board,player));
+  if(!moves.length)return isMax?-1000-depth:1000+depth;
+  if(isMax){
+    let best=-Infinity;
+    for(const m of moves){
+      const nb=cloneBoard(board);applyMacro(nb,m);
+      best=Math.max(best,minimax(nb,depth-1,alpha,beta,false));
+      alpha=Math.max(alpha,best);
+      if(beta<=alpha)break;
+    }
+    return best;
+  }else{
+    let best=Infinity;
+    for(const m of moves){
+      const nb=cloneBoard(board);applyMacro(nb,m);
+      best=Math.min(best,minimax(nb,depth-1,alpha,beta,true));
+      beta=Math.min(beta,best);
+      if(beta<=alpha)break;
+    }
+    return best;
+  }
+}
+
+// Оценить КАЖДЫЙ вариант (для гибрида с Предком): итеративное углубление,
+// возвращаются оценки последней полностью досчитанной глубины
+function evalMacros(board,macros,budget){
+  budget=budget||1000;
+  const t0=Date.now();
+  MM_DEADLINE=t0+budget*2;
+  let scores=macros.map(()=>0),depth=0;
+  for(let d=1;d<=9;d++){
+    const cur=[];let aborted=false;
+    MM_CUTOFF=false;
+    for(let i=0;i<macros.length;i++){
+      if(Date.now()-t0>budget){aborted=true;break;}
+      const nb=cloneBoard(board);applyMacro(nb,macros[i]);
+      cur[i]=minimax(nb,d-1,-Infinity,Infinity,true);
+    }
+    if(aborted||MM_CUTOFF)break; // глубина не досчитана честно — не засчитываем
+    scores=cur;depth=d;
+  }
+  return {scores:scores,depth:depth};
+}
+
+// Итеративное углубление с бюджетом времени: берём результат
+// последней ПОЛНОСТЬЮ завершённой глубины
+function minimaxPick(board,macros,budget,info){
+  budget=budget||1200;
+  const t0=Date.now();
+  MM_DEADLINE=t0+budget*2;
+  const sorted=sortMacros(macros);
+  let best=sorted[0],reached=0;
+  for(let d=1;d<=9;d++){
+    let bestS=Infinity,bestM=null,aborted=false;
+    MM_CUTOFF=false;
+    for(const m of sorted){
+      if(Date.now()-t0>budget){aborted=true;break;}
+      const nb=cloneBoard(board);applyMacro(nb,m);
+      const s=minimax(nb,d-1,-Infinity,Infinity,true);
+      if(s<bestS){bestS=s;bestM=m;}
+    }
+    if(aborted||MM_CUTOFF)break;
+    if(bestM){best=bestM;reached=d;}
+  }
+  if(info){info.depth=reached;info.ms=Date.now()-t0;}
+  return best;
+}
+
+// ── Журнал партии (для разбора ошибок алгоритма) ──
+let gameLog=[],gameNo=0,halfMoveNo=0,loggedGameId=0;
+function logLine(s){gameLog.push(s);if(gameLog.length>4000)gameLog.splice(0,500);}
+// Заголовок пишется лениво — при первом реальном событии партии,
+// чтобы не плодить пустые "Партия N" от служебных сбросов доски
+function ensureGameHeader(){
+  if(loggedGameId===G.gameId)return;
+  loggedGameId=G.gameId;
+  gameNo++;
+  logLine('');
+  logLine('═══ Партия '+gameNo+' ═══');
+}
+function boardToCompact(b){
+  return b.map(row=>row.map(p=>p===1?'w':p===2?'W':p===-1?'b':p===-2?'B':'.').join('')).join('/');
+}
+function macroNotation(m){
+  if(m.steps)return [sqName(m.steps[0].from),...m.steps.map(s=>sqName(s.to))].join(':')+' x'+m.steps.length;
+  return sqName(m.from)+'-'+sqName(m.to);
+}
+
+let G={board:null,turn:1,over:false,lastFrom:null,lastTo:null,
+  chainMode:false,chainPos:null,chainBeaten:[],chainMoves:[],chainPath:[],
+  deadSet:new Set(),gameId:0,quietCount:0};
+let selected=null,validMoves=[],busy=false;
+let hintFrom=null,hintTos=[]; // подсветка подсказки для белых
+
+function setupGame(){
+  G.board=Array.from({length:8},()=>new Array(8).fill(0));
+  for(let r=0;r<3;r++)for(let c=0;c<8;c++)if((r+c)%2===1)G.board[r][c]=-1;
+  for(let r=5;r<8;r++)for(let c=0;c<8;c++)if((r+c)%2===1)G.board[r][c]=1;
+  G.turn=1;G.over=false;G.lastFrom=null;G.lastTo=null;
+  G.chainMode=false;G.chainPos=null;G.chainBeaten=[];G.chainMoves=[];
+  G.deadSet=new Set();G.gameId++;G.quietCount=0;G.chainPath=[];
+  selected=null;validMoves=[];busy=false;
+  hintFrom=null;hintTos=[];
+  halfMoveNo=0;
+}
+
+// ── Правило ничьей: 30 ходов подряд без взятий и без хода простой → ничья ──
+const QUIET_LIMIT=30;
+function updateQuiet(wasCapture,wasKingMove){
+  if(wasCapture||!wasKingMove)G.quietCount=0;
+  else G.quietCount++;
+}
+
+function render(){
+  const mustCapSet=new Set(),movable=new Set();
+  if(!G.over&&G.turn===1&&!G.chainMode&&appState==='play'){
+    const all=getAllMoves(G.board,1);
+    const hasCaps=all.some(m=>m.cap!==null);
+    for(const m of all){
+      if(hasCaps&&m.cap)mustCapSet.add(m.from.r+","+m.from.c);
+      else if(!hasCaps)movable.add(m.from.r+","+m.from.c);
+    }
+  }
+  document.querySelectorAll('.cell').forEach(cell=>{
+    const r=+cell.dataset.r,c=+cell.dataset.c,p=G.board[r][c];
+    cell.classList.remove('sel','target','lastmv-from','lastmv-to','canmove','mustcap','hint-from','hint-to');
+    if(G.lastFrom&&G.lastFrom.r===r&&G.lastFrom.c===c)cell.classList.add('lastmv-from');
+    if(G.lastTo&&G.lastTo.r===r&&G.lastTo.c===c)cell.classList.add('lastmv-to');
+    if(hintFrom&&hintFrom.r===r&&hintFrom.c===c)cell.classList.add('hint-from');
+    for(const h of hintTos)if(h.r===r&&h.c===c){cell.classList.add('hint-to');break}
+    if(selected&&selected.r===r&&selected.c===c)cell.classList.add('sel');
+    const vms=G.chainMode?G.chainMoves:validMoves;
+    for(const m of vms)if(m.to.r===r&&m.to.c===c){cell.classList.add('target');break}
+    if(!selected&&!G.chainMode){
+      if(mustCapSet.has(r+","+c))cell.classList.add('mustcap');
+      else if(movable.has(r+","+c))cell.classList.add('canmove');
+    }
+    let ex=cell.querySelector('.piece');
+    if(p!==0){
+      const cls='piece '+(p>0?'white':'black')+(isKing(p)?' king':'')
+        +(G.chainMode&&G.chainPos&&G.chainPos.r===r&&G.chainPos.c===c?' multicap':'')
+        +(G.deadSet.has(r+","+c)?' dead':'');
+      if(ex){
+        ex.className=cls;
+        if(ex.dataset.k!==String(p)){ex.dataset.k=String(p);ex.innerHTML=pieceSVG(p);}
+      }else{
+        const d=document.createElement('div');d.className=cls;
+        d.dataset.k=String(p);d.innerHTML=pieceSVG(p);
+        cell.insertBefore(d,cell.querySelector('.hl'));
+      }
+    }else{if(ex)ex.remove();}
+  });
+}
+
+function buildBoard(){
+  const el=document.getElementById('board');el.innerHTML='';
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const cell=document.createElement('div');
+    cell.className='cell '+((r+c)%2===0?'light':'dark');
+    cell.dataset.r=r;cell.dataset.c=c;
+    const hl=document.createElement('div');hl.className='hl';
+    cell.appendChild(hl);
+    cell.addEventListener('click',()=>onCellClick(r,c));
+    el.appendChild(cell);
+  }
+}
+
+// ── Деревянные фигуры: светлый клён / тёмный орех ──
+function pieceSVG(p){
+  const king=Math.abs(p)===2,white=p>0;
+  const body=white?'#e8c896':'#5b3a24';
+  const edge=white?'#b08d55':'#33200f';
+  const grain=white?'#c8a468':'#7a5435';
+  let s='<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">';
+  s+='<circle cx="32" cy="32" r="30" fill="'+body+'" stroke="'+edge+'" stroke-width="2.5"/>';
+  s+='<path d="M10 24 Q32 18 54 26 M8 34 Q30 29 56 36 M12 44 Q36 40 52 46" fill="none" stroke="'+grain+'" stroke-width="1.5" opacity=".8"/>';
+  if(king){
+    const seal=white?'#8a2f2f':'#e3c47e';
+    const crown=white?'#f3d9a8':'#4a2e1a';
+    s+='<circle cx="32" cy="32" r="14.5" fill="'+seal+'" stroke="'+edge+'" stroke-width="1" opacity=".95"/>';
+    s+='<path d="M24 37 L22.5 27.5 L28 31 L32 24 L36 31 L41.5 27.5 L40 37 Z" fill="'+crown+'"/>';
+  }else{
+    s+='<circle cx="32" cy="32" r="22" fill="none" stroke="'+edge+'" stroke-width="1.3" opacity=".7"/>';
+  }
+  return s+'</svg>';
+}
+
+function onCellClick(r,c){
+  if(appState!=='play'||G.over||busy)return;
+  if(G.chainMode){
+    const move=G.chainMoves.find(m=>m.to.r===r&&m.to.c===c);
+    if(move)doChainCapture(move);return;
+  }
+  if(G.turn!==1)return;
+  const p=G.board[r][c];
+  if(selected&&selected.r===r&&selected.c===c){selected=null;validMoves=[];render();return;}
+  if(selected){
+    const move=validMoves.find(m=>m.to.r===r&&m.to.c===c);
+    if(move){selected=null;validMoves=[];if(move.cap)startChainCapture(move);else doNormalMove(move);return;}
+  }
+  if(p>0){
+    selected={r,c};
+    const all=getAllMoves(G.board,1);
+    validMoves=all.filter(m=>m.from.r===r&&m.from.c===c);
+  }else{selected=null;validMoves=[];}
+  render();
+}
+
+function startChainCapture(move){
+  busy=true;hintFrom=null;hintTos=[];
+  ensureGameHeader();
+  const beaten=[move.cap.r+","+move.cap.c];
+  G.chainPath=[move.from,move.to];
+  G.boardBefore=boardToCompact(G.board);
+  applyCapture(G.board,move);G.lastFrom=move.from;G.lastTo=move.to;
+  G.deadSet=new Set(beaten);
+  // Русские шашки: простая, ставшая дамкой в процессе боя,
+  // обязана продолжить бой уже как дамка в том же ходе
+  const further=getCaptures(G.board,move.to.r,move.to.c,beaten);
+  if(further.length){G.chainMode=true;G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;setStatus('chain');render();busy=false;return;}
+  removeBeaten(G.board,beaten);G.deadSet.clear();
+  updateQuiet(true,false);
+  logPlayerChain(beaten.length);
+  finishPlayerTurn();
+}
+function doChainCapture(move){
+  busy=true;
+  const beaten=[...G.chainBeaten,move.cap.r+","+move.cap.c];
+  G.chainPath.push(move.to);
+  applyCapture(G.board,move);G.lastTo=move.to;
+  G.deadSet=new Set(beaten);
+  const further=getCaptures(G.board,move.to.r,move.to.c,beaten);
+  if(further.length){G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;render();busy=false;return;}
+  G.chainMode=false;G.chainPos=null;G.chainBeaten=[];G.chainMoves=[];
+  removeBeaten(G.board,beaten);G.deadSet.clear();
+  updateQuiet(true,false);
+  logPlayerChain(beaten.length);
+  finishPlayerTurn();
+}
+function logPlayerChain(n){
+  logLine('#'+(++halfMoveNo)+' БЕЛЫЕ: '+G.chainPath.map(sqName).join(':')+' x'+n+' | '+(G.boardBefore||''));
+  G.chainPath=[];G.boardBefore='';
+}
+function doNormalMove(move){
+  busy=true;hintFrom=null;hintTos=[];
+  ensureGameHeader();
+  const wasKing=isKing(G.board[move.from.r][move.from.c]);
+  logLine('#'+(++halfMoveNo)+' БЕЛЫЕ: '+sqName(move.from)+'-'+sqName(move.to)+' | '+boardToCompact(G.board));
+  applyNormal(G.board,move);G.lastFrom=move.from;G.lastTo=move.to;
+  updateQuiet(false,wasKing);
+  render();finishPlayerTurn();
+}
+function finishPlayerTurn(){
+  const end=checkEnd(G.board);
+  if(end!==0){render();showResult(end);busy=false;return;}
+  if(G.quietCount>=QUIET_LIMIT){render();showResult(2);busy=false;return;}
+  G.turn=-1;render();setStatus('ai');
+  const gid=G.gameId;
+  setTimeout(()=>{if(G.gameId===gid)doAITurn();},700);
+}
+
+// Лучший ход за БЕЛЫХ (для подсказки игроку)
+function bestForWhite(board,budget){
+  const macros=getMacroMoves(board,1);
+  if(!macros.length)return null;
+  budget=budget||1500;
+  const t0=Date.now();
+  MM_DEADLINE=t0+budget*2;
+  const sorted=sortMacros(macros);
+  let best=sorted[0];
+  for(let d=1;d<=9;d++){
+    let bestS=-Infinity,bestM=null,aborted=false;
+    MM_CUTOFF=false;
+    for(const m of sorted){
+      if(Date.now()-t0>budget){aborted=true;break;}
+      const nb=cloneBoard(board);applyMacro(nb,m);
+      const s=minimax(nb,d-1,-Infinity,Infinity,false);
+      if(s>bestS){bestS=s;bestM=m;}
+    }
+    if(aborted||MM_CUTOFF)break;
+    if(bestM)best=bestM;
+  }
+  return best;
+}
+
+// ══════════════════════════════════════════════════════
+// ── Игровой цикл ──
+// ══════════════════════════════════════════════════════
+function sqName(p){return 'abcdefgh'[p.c]+(8-p.r);}
+
+function doAITurn(){
+  if(appState!=='play'||G.over||G.turn!==-1)return;
+  const macros=getMacroMoves(G.board,-1);
+  if(!macros.length){finishAITurn();return;}
+  const boardBefore=boardToCompact(G.board);
+  ensureGameHeader();
+  halfMoveNo++;
+  logLine('#'+halfMoveNo+' ход чёрных | '+boardBefore);
+
+  let move;
+  // Форсированный ход — без раздумий
+  if(macros.length===1){
+    move=macros[0];
+    logLine('  единственный ход → '+macroNotation(move));
+  }else{
+    // Движок оценивает все варианты; среди равноценных безопасных
+    // выбирает случайно — соперник вариативный, но не зевает
+    const ev=evalMacros(G.board,macros,1000);
+    const best=Math.min(...ev.scores);
+    const cand=macros.map((m,i)=>({m:m,score:ev.scores[i]}))
+      .filter(c=>c.score<=best+2.0)        // отсечь зевки, оставить равноценные
+      .sort((a,b)=>a.score-b.score)
+      .slice(0,5);
+    logLine('  оценки (глубина '+ev.depth+'): '
+      +macros.map((m,i)=>i+'.'+macroNotation(m)+'='+ev.scores[i].toFixed(1)).join('; '));
+    if(cand.length===1){
+      move=cand[0].m;
+      logLine('  движок: безопасен только '+macroNotation(move));
+    }else{
+      move=cand[Math.floor(Math.random()*cand.length)].m;
+      logLine('  кандидаты: '+cand.map((c,i)=>i+'.'+macroNotation(c.m)+'='+c.score.toFixed(1)).join('; '));
+      logLine('  ПРАДЕД выбрал → '+macroNotation(move));
+    }
+  }
+  setStatus('ai');
+
+  if(!move.steps){
+    const wasKing=isKing(G.board[move.from.r][move.from.c]);
+    applyNormal(G.board,move);G.lastFrom=move.from;G.lastTo=move.to;
+    updateQuiet(false,wasKing);
+    render();flashMoved(move.to);finishAITurn();return;
+  }
+  playAIChain(move.steps,0,[]);
+}
+function playAIChain(chain,idx,beaten){
+  const gid=G.gameId;
+  if(idx>=chain.length){
+    // Конец серии: снимаем все побитые шашки с анимацией
+    flashAllBeaten(beaten,()=>{
+      if(G.gameId!==gid)return;
+      removeBeaten(G.board,beaten);G.deadSet.clear();
+      updateQuiet(true,false);
+      render();finishAITurn();
+    });
+    return;
+  }
+  const move=chain[idx];
+  applyCapture(G.board,move);
+  beaten.push(move.cap.r+","+move.cap.c);
+  G.deadSet=new Set(beaten);
+  if(idx===0)G.lastFrom=move.from;G.lastTo=move.to;
+  render();flashMoved(move.to);
+  setTimeout(()=>{if(G.gameId===gid)playAIChain(chain,idx+1,beaten);},520);
+}
+function flashAllBeaten(beaten,cb){
+  if(!beaten.length){cb();return;}
+  let any=false;
+  for(const k of beaten){
+    const [r,c]=k.split(',');
+    const cell=document.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
+    const piece=cell&&cell.querySelector('.piece');
+    if(piece){piece.classList.add('ai-eaten');any=true;}
+  }
+  setTimeout(cb,any?420:0);
+}
+function flashMoved(pos){
+  const cell=document.querySelector('[data-r="'+pos.r+'"][data-c="'+pos.c+'"]');
+  const piece=cell&&cell.querySelector('.piece');
+  if(piece){piece.classList.remove('ai-moved');void piece.offsetWidth;piece.classList.add('ai-moved');setTimeout(()=>piece.classList.remove('ai-moved'),300);}
+}
+function finishAITurn(){
+  G.turn=1;render();
+  const end=checkEnd(G.board);
+  if(end!==0){showResult(end);busy=false;return;}
+  if(G.quietCount>=QUIET_LIMIT){showResult(2);busy=false;return;}
+  if(!getAllMoves(G.board,1).length){showResult(-1);busy=false;return;}
+  setStatus('player');busy=false;
+}
+
+function showResult(winner){
+  G.over=true;
+  logLine('РЕЗУЛЬТАТ: '+(winner===1?'победа белых':winner===2?'ничья (правило 30 ходов)':'победа чёрных'));
+  setStatus(winner===1?'win':winner===2?'draw':'lose');
+  const m=activeModel();
+  const total=m?m.images.length:1;
+  if(winner===1){
+    launchConfetti();
+    if(!m){setTimeout(startNewGame,2200);return;}
+    const next=imgIdx+1;
+    if(next>=total){
+      // Все картинки открыты — показываем галерею, прогресс по кругу
+      if(m)saveProgress(m.dir,0);
+      setTimeout(showGallery,1400);
+    }else{
+      imgIdx=next;
+      if(m)saveProgress(m.dir,imgIdx);
+      setImage(imgIdx);
+      setTimeout(startNewGame,2200);
+    }
+  }else{
+    // Поражение — та же картинка, новая партия
+    setTimeout(startNewGame,2200);
+  }
+}
+
+function setStatus(who){
+  const el=document.getElementById('status');
+  if(who==='player'){el.textContent='Ваш ход (Белые)';el.className='status-bar';}
+  else if(who==='ai'){el.textContent='Ход чёрных…';el.className='status-bar ai-turn';}
+  else if(who==='chain'){el.textContent='⚡ Продолжайте бить!';el.className='status-bar';}
+  else if(who==='win'){el.textContent='🏆 Победа!';el.className='status-bar';}
+  else if(who==='lose'){el.textContent='Поражение… Новая партия!';el.className='status-bar ai-turn';}
+  else if(who==='draw'){el.textContent='🤝 Ничья — новая партия';el.className='status-bar';}
+  else{el.textContent='';el.className='status-bar';}
+}
+
+function launchConfetti(){
+  const colors=['#ffd700','#e94560','#4ecca3','#a259f7','#fff','#f5c842'];
+  for(let i=0;i<60;i++){
+    setTimeout(()=>{
+      const el=document.createElement('div');const sz=Math.random()*10+6;
+      el.style.cssText='position:fixed;top:-20px;left:'+Math.random()*100+'vw;width:'+sz+'px;height:'+sz+'px;border-radius:'+(Math.random()>.5?'50%':'2px')+';background:'+colors[Math.floor(Math.random()*colors.length)]+';z-index:999;pointer-events:none;animation:confettiFall '+(Math.random()*2+1.5)+'s linear forwards';
+      document.body.appendChild(el);setTimeout(()=>el.remove(),4000);
+    },i*50);
+  }
+}
+
+function startNewGame(){
+  setupGame();render();setStatus('player');
+}
+
+// ── Кнопки управления ──
+document.getElementById('btnBack').addEventListener('click',goToSelect);
+document.getElementById('btnRestart').addEventListener('click',()=>{
+  if(appState!=='play')return;
+  startNewGame();
+});
+document.getElementById('btnHint').addEventListener('click',()=>{
+  if(appState!=='play'||G.over||busy||G.turn!==1||G.chainMode)return;
+  const move=bestForWhite(G.board,1500);
+  if(!move)return;
+  hintFrom=move.steps?move.steps[0].from:move.from;
+  hintTos=move.steps?move.steps.map(s=>s.to):[move.to];
+  ensureGameHeader();
+  logLine('  💡 подсказка белым: '+macroNotation(move));
+  render();
+});
+document.getElementById('btnLog').addEventListener('click',()=>{
+  document.getElementById('logText').value=gameLog.join('\n')||'Журнал пуст — сделайте хотя бы один ход.';
+  document.getElementById('logOverlay').classList.add('visible');
+});
+document.getElementById('logClose').addEventListener('click',()=>{
+  document.getElementById('logOverlay').classList.remove('visible');
+});
+document.getElementById('logCopy').addEventListener('click',()=>{
+  const ta=document.getElementById('logText');
+  ta.select();
+  let ok=false;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(()=>{
+      document.getElementById('logCopy').textContent='✓ Скопировано';
+      setTimeout(()=>{document.getElementById('logCopy').textContent='Скопировать';},1500);
+    }).catch(()=>{document.execCommand&&document.execCommand('copy');});
+  }else if(document.execCommand){document.execCommand('copy');}
+});
+document.getElementById('logOverlay').addEventListener('click',e=>{
+  if(e.target===document.getElementById('logOverlay'))
+    document.getElementById('logOverlay').classList.remove('visible');
+});
+
+// ── Старт ──
+setupGame();buildBoard();render();
+initModels();
+</script>
+</body>
+</html>
