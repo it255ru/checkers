@@ -1,0 +1,67 @@
+# Тесты на каждый push/PR + публикация на GitHub Pages только при зелёных тестах.
+# Положить в репозиторий по пути: .github/workflows/ci.yml
+name: Тесты и публикация
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # ручной запуск (в т.ч. для матча движков)
+
+jobs:
+  tests:
+    name: Тесты движка и ИИ
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Правила русских шашек (17 проверок)
+        run: node test_engine.js
+
+      - name: Алгоритмы ИИ (10 проверок)
+        run: node test_ai.js
+
+      - name: Симуляция 2000 случайных партий
+        run: node sim.js
+
+  deploy:
+    name: Публикация на GitHub Pages
+    needs: tests                       # без зелёных тестов публикации не будет
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Собрать сайт (только игра и картинки, без тестов)
+        run: |
+          mkdir dist
+          cp checkers.html dist/index.html
+          if [ -d media ]; then cp -r media dist/media; fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Тяжёлый матч движков — только вручную: Actions → Тесты и публикация → Run workflow
+  match:
+    name: Матч движок против движка (ручной)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node match.js 60 20
