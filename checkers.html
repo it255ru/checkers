@@ -44,6 +44,15 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 .cell.target .hl{box-shadow:inset 0 0 0 3px #4ecca3;background:rgba(78,204,163,.15)}
 .cell.lastmv-from .hl{background:rgba(255,215,0,.18);box-shadow:inset 0 0 0 2px rgba(255,215,0,.5)}
 .cell.lastmv-to .hl{background:rgba(255,215,0,.32);box-shadow:inset 0 0 0 2px rgba(255,215,0,.85)}
+.cell.lastmv-path .hl{background:rgba(255,215,0,.14)}
+.cell.lastmv-cap .hl{
+  background:rgba(233,69,96,.12);
+  box-shadow:inset 0 0 0 2px rgba(233,69,96,.5);
+}
+.cell.lastmv-cap .hl::after{
+  content:'✕';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:rgba(233,69,96,.55);font-size:1.1em;font-weight:bold;
+}
 .cell.hint-from .hl{box-shadow:inset 0 0 0 3px #3aa0ff;background:rgba(58,160,255,.12)}
 .cell.hint-to .hl{box-shadow:inset 0 0 0 3px rgba(58,160,255,.7);background:rgba(58,160,255,.22)}
 .piece{width:75%;height:75%;border-radius:50%;position:relative;z-index:1;
@@ -274,6 +283,8 @@ const SETTINGS = {
   folder: "media/",
   // Резервный список каталогов (если сервер не отдаёт листинг)
   fallbackDirs: [],
+  // Единственное обязательное взятие у белых выполняется автоматически
+  autoForcedMove: true,
 };
 /* ═══════════════════════════════════════════════════════ */
 
@@ -860,7 +871,7 @@ function macroNotation(m){
   return sqName(m.from)+'-'+sqName(m.to);
 }
 
-let G={board:null,turn:1,over:false,lastFrom:null,lastTo:null,
+let G={board:null,turn:1,over:false,lastFrom:null,lastTo:null,lastPath:[],lastCaps:[],
   chainMode:false,chainPos:null,chainBeaten:[],chainMoves:[],chainPath:[],
   deadSet:new Set(),gameId:0,quietCount:0};
 let selected=null,validMoves=[],busy=false;
@@ -870,7 +881,7 @@ function setupGame(){
   G.board=Array.from({length:8},()=>new Array(8).fill(0));
   for(let r=0;r<3;r++)for(let c=0;c<8;c++)if((r+c)%2===1)G.board[r][c]=-1;
   for(let r=5;r<8;r++)for(let c=0;c<8;c++)if((r+c)%2===1)G.board[r][c]=1;
-  G.turn=1;G.over=false;G.lastFrom=null;G.lastTo=null;
+  G.turn=1;G.over=false;G.lastFrom=null;G.lastTo=null;G.lastPath=[];G.lastCaps=[];
   G.chainMode=false;G.chainPos=null;G.chainBeaten=[];G.chainMoves=[];
   G.deadSet=new Set();G.gameId++;G.quietCount=0;G.chainPath=[];
   selected=null;validMoves=[];busy=false;
@@ -897,9 +908,11 @@ function render(){
   }
   document.querySelectorAll('.cell').forEach(cell=>{
     const r=+cell.dataset.r,c=+cell.dataset.c,p=G.board[r][c];
-    cell.classList.remove('sel','target','lastmv-from','lastmv-to','canmove','mustcap','hint-from','hint-to');
+    cell.classList.remove('sel','target','lastmv-from','lastmv-to','canmove','mustcap','hint-from','hint-to','lastmv-path','lastmv-cap');
     if(G.lastFrom&&G.lastFrom.r===r&&G.lastFrom.c===c)cell.classList.add('lastmv-from');
     if(G.lastTo&&G.lastTo.r===r&&G.lastTo.c===c)cell.classList.add('lastmv-to');
+    for(const p of G.lastPath)if(p.r===r&&p.c===c){cell.classList.add('lastmv-path');break}
+    if(G.lastCaps.indexOf(r+','+c)>=0)cell.classList.add('lastmv-cap');
     if(hintFrom&&hintFrom.r===r&&hintFrom.c===c)cell.classList.add('hint-from');
     for(const h of hintTos)if(h.r===r&&h.c===c){cell.classList.add('hint-to');break}
     if(selected&&selected.r===r&&selected.c===c)cell.classList.add('sel');
@@ -981,17 +994,19 @@ function onCellClick(r,c){
 }
 
 function startChainCapture(move){
-  busy=true;hintFrom=null;hintTos=[];
+  busy=true;hintFrom=null;hintTos=[];selected=null;validMoves=[];
   ensureGameHeader();
   const beaten=[move.cap.r+","+move.cap.c];
   G.chainPath=[move.from,move.to];
+  G.lastPath=G.chainPath.slice();G.lastCaps=[];
   G.boardBefore=boardToCompact(G.board);
   applyCapture(G.board,move);G.lastFrom=move.from;G.lastTo=move.to;
   G.deadSet=new Set(beaten);
   // Русские шашки: простая, ставшая дамкой в процессе боя,
   // обязана продолжить бой уже как дамка в том же ходе
   const further=getCaptures(G.board,move.to.r,move.to.c,beaten);
-  if(further.length){G.chainMode=true;G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;setStatus('chain');render();busy=false;return;}
+  if(further.length){G.chainMode=true;G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;setStatus('chain');render();busy=false;autoChainContinue();return;}
+  G.lastPath=G.chainPath.slice();G.lastCaps=beaten.slice();
   removeBeaten(G.board,beaten);G.deadSet.clear();
   updateQuiet(true,false);
   logPlayerChain(beaten.length);
@@ -1001,22 +1016,26 @@ function doChainCapture(move){
   busy=true;
   const beaten=[...G.chainBeaten,move.cap.r+","+move.cap.c];
   G.chainPath.push(move.to);
+  G.lastPath=G.chainPath.slice();
   applyCapture(G.board,move);G.lastTo=move.to;
   G.deadSet=new Set(beaten);
   const further=getCaptures(G.board,move.to.r,move.to.c,beaten);
-  if(further.length){G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;render();busy=false;return;}
+  if(further.length){G.chainPos=move.to;G.chainBeaten=beaten;G.chainMoves=further;render();busy=false;autoChainContinue();return;}
   G.chainMode=false;G.chainPos=null;G.chainBeaten=[];G.chainMoves=[];
+  G.lastPath=G.chainPath.slice();G.lastCaps=beaten.slice();
   removeBeaten(G.board,beaten);G.deadSet.clear();
   updateQuiet(true,false);
   logPlayerChain(beaten.length);
   finishPlayerTurn();
 }
 function logPlayerChain(n){
-  logLine('#'+(++halfMoveNo)+' БЕЛЫЕ: '+G.chainPath.map(sqName).join(':')+' x'+n+' | '+(G.boardBefore||''));
-  G.chainPath=[];G.boardBefore='';
+  logLine('#'+(++halfMoveNo)+' БЕЛЫЕ: '+G.chainPath.map(sqName).join(':')+' x'+n
+    +(autoPlayed?' [авто]':'')+' | '+(G.boardBefore||''));
+  G.chainPath=[];G.boardBefore='';autoPlayed=false;
 }
 function doNormalMove(move){
-  busy=true;hintFrom=null;hintTos=[];
+  busy=true;hintFrom=null;hintTos=[];selected=null;validMoves=[];
+  G.lastPath=[move.from,move.to];G.lastCaps=[];
   ensureGameHeader();
   const wasKing=isKing(G.board[move.from.r][move.from.c]);
   logLine('#'+(++halfMoveNo)+' БЕЛЫЕ: '+sqName(move.from)+'-'+sqName(move.to)+' | '+boardToCompact(G.board));
@@ -1107,6 +1126,7 @@ function doAITurn(){
   if(!move.steps){
     const wasKing=isKing(G.board[move.from.r][move.from.c]);
     applyNormal(G.board,move);G.lastFrom=move.from;G.lastTo=move.to;
+    G.lastPath=[move.from,move.to];G.lastCaps=[];
     updateQuiet(false,wasKing);
     render();flashMoved(move.to);finishAITurn();return;
   }
@@ -1119,6 +1139,7 @@ function playAIChain(chain,idx,beaten){
     flashAllBeaten(beaten,()=>{
       if(G.gameId!==gid)return;
       removeBeaten(G.board,beaten);G.deadSet.clear();
+      G.lastCaps=beaten.slice();
       updateQuiet(true,false);
       render();finishAITurn();
     });
@@ -1128,7 +1149,9 @@ function playAIChain(chain,idx,beaten){
   applyCapture(G.board,move);
   beaten.push(move.cap.r+","+move.cap.c);
   G.deadSet=new Set(beaten);
-  if(idx===0)G.lastFrom=move.from;G.lastTo=move.to;
+  if(idx===0){G.lastFrom=move.from;G.lastPath=[move.from];G.lastCaps=[];}
+  G.lastPath.push(move.to);
+  G.lastTo=move.to;
   render();flashMoved(move.to);
   setTimeout(()=>{if(G.gameId===gid)playAIChain(chain,idx+1,beaten);},520);
 }
@@ -1155,6 +1178,41 @@ function finishAITurn(){
   if(G.quietCount>=QUIET_LIMIT){showResult(2);busy=false;return;}
   if(!getAllMoves(G.board,1).length){showResult(-1);busy=false;return;}
   setStatus('player');busy=false;
+  maybeAutoMove();
+}
+
+// ── Автоход: если у белых ровно одно обязательное взятие — делаем его сами ──
+let autoPlayed=false;
+function maybeAutoMove(){
+  if(!SETTINGS.autoForcedMove)return;
+  if(appState!=='play'||G.over||G.turn!==1||busy||G.chainMode)return;
+  const moves=getAllMoves(G.board,1);
+  if(moves.length!==1||!moves[0].cap)return;
+  // показываем игроку вынужденный ход, потом выполняем
+  selected={r:moves[0].from.r,c:moves[0].from.c};
+  validMoves=moves.slice();
+  render();
+  const gid=G.gameId;
+  setTimeout(()=>{
+    if(G.gameId!==gid||G.turn!==1||G.over||busy||G.chainMode)return;
+    // перепроверяем: игрок мог успеть походить сам
+    const ms=getAllMoves(G.board,1);
+    if(ms.length!==1||!ms[0].cap)return;
+    autoPlayed=true;
+    startChainCapture(ms[0]);
+  },650);
+}
+// Единственное продолжение серии боя тоже выполняется само
+function autoChainContinue(){
+  if(!SETTINGS.autoForcedMove)return;
+  if(!G.chainMode||G.chainMoves.length!==1)return;
+  const gid=G.gameId;
+  setTimeout(()=>{
+    if(G.gameId!==gid||!G.chainMode||G.over||busy)return;
+    if(G.chainMoves.length!==1)return;
+    autoPlayed=true;
+    doChainCapture(G.chainMoves[0]);
+  },450);
 }
 
 function showResultOverlay(html,ms){
