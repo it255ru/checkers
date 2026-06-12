@@ -474,7 +474,7 @@ function buildPicPanel(){
     el.src=SETTINGS.folder+item.img;
     el.alt=item.caption||'';
     if(i===0){el.classList.add('active');el.style.cssText='position:relative;opacity:1';}
-    else el.style.cssText='position:absolute;top:0;left:0;opacity:0';
+    else el.style.cssText='position:absolute;top:0;left:0;opacity:0;visibility:hidden;pointer-events:none';
     wrap.appendChild(el);
   });
   document.getElementById('pic-caption').textContent=m.images[0]?.caption||'';
@@ -489,11 +489,13 @@ function setImage(idx){
     const el=document.getElementById('img-'+i);if(!el)return;
     if(i===idx){
       el.style.position='relative';el.style.opacity='0';
+      el.style.visibility='visible';el.style.pointerEvents='auto';
       el.classList.add('active');
       requestAnimationFrame(()=>{el.style.opacity='1';});
     }else{
       el.classList.remove('active');
       el.style.position='absolute';el.style.opacity='0';
+      el.style.visibility='hidden';el.style.pointerEvents='none';
     }
   });
   document.getElementById('pic-caption').textContent=m.images[idx]?.caption||'';
