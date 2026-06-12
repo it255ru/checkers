@@ -157,6 +157,20 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 }
 .gallery-btn:hover{background:#6ef5d0;transform:scale(1.04)}
 
+/* ── Оверлей результата партии ── */
+.result-overlay{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(10,10,25,.55);z-index:60;pointer-events:none;
+}
+.result-overlay.visible{display:flex;animation:resultIn .25s ease}
+@keyframes resultIn{from{opacity:0}to{opacity:1}}
+.result-box{
+  background:#16213e;border:1px solid rgba(255,255,255,.18);border-radius:16px;
+  padding:26px 44px;text-align:center;font-size:1.6em;font-weight:bold;color:#eee;
+  box-shadow:0 12px 48px rgba(0,0,0,.65);
+}
+.result-box small{display:block;font-size:.5em;font-weight:normal;color:#9aa;margin-top:10px;line-height:1.4}
+
 /* ── Лайтбокс ── */
 .lightbox{
   position:fixed;inset:0;background:rgba(0,0,0,.92);
@@ -240,6 +254,9 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
     </div>
   </div>
 </div>
+
+<!-- Результат партии -->
+<div class="result-overlay" id="resultOverlay"><div class="result-box" id="resultBox"></div></div>
 
 <!-- Лайтбокс -->
 <div class="lightbox" id="lightbox">
@@ -1140,15 +1157,26 @@ function finishAITurn(){
   setStatus('player');busy=false;
 }
 
+function showResultOverlay(html,ms){
+  const ov=document.getElementById('resultOverlay');
+  document.getElementById('resultBox').innerHTML=html;
+  ov.classList.add('visible');
+  setTimeout(()=>ov.classList.remove('visible'),ms);
+}
 function showResult(winner){
   G.over=true;
   logLine('РЕЗУЛЬТАТ: '+(winner===1?'победа белых':winner===2?'ничья (правило 30 ходов)':'победа чёрных'));
   setStatus(winner===1?'win':winner===2?'draw':'lose');
+  if(winner===2)showResultOverlay('🤝 Ничья<small>30 ходов дамками подряд<br>без взятий и продвижения простых</small>',2000);
+  else if(winner===-1)showResultOverlay('Поражение<small>Сейчас начнётся новая партия…</small>',2000);
   const m=activeModel();
   const total=m?m.images.length:1;
   if(winner===1){
     launchConfetti();
-    if(!m){setTimeout(startNewGame,2200);return;}
+    if(!m){
+      showResultOverlay('🏆 Победа!<small>Сейчас начнётся новая партия…</small>',2000);
+      setTimeout(startNewGame,2200);return;
+    }
     const next=imgIdx+1;
     if(next>=total){
       // Все картинки открыты — показываем галерею, прогресс по кругу
