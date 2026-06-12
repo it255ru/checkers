@@ -459,22 +459,31 @@ function renderWelcome(){
     'Выберите коллекцию — каждая победа открывает новую картинку';
   models.forEach((m,i)=>cards.appendChild(makeWelcomeCard(m,i)));
 }
-// Режим загрузки: экран виден сразу, карточки появляются по мере обнаружения
+// Режим загрузки: экран виден сразу, карточки появляются по мере обнаружения.
+// Если выбор уже сохранён — карточки не показываем (выбор предрешён),
+// а честно пишем, какая коллекция грузится.
+let pendingAutoDir=null;
 function startWelcomeLoading(){
-  document.getElementById('welcomeSub').textContent='Загрузка коллекций…';
+  let saved=null;
+  try{saved=localStorage.getItem('checkersLast');}catch(_){}
+  pendingAutoDir=saved; // имя каталога | '' (без картинок) | null (выбора не было)
+  document.getElementById('welcomeSub').textContent=
+    saved?('Загрузка коллекции «'+saved+'»…'):'Загрузка коллекций…';
   document.getElementById('welcomeSpin').classList.remove('hidden');
   document.getElementById('welcomeCards').innerHTML='';
   document.getElementById('welcomeOverlay').classList.add('visible');
 }
 function addWelcomeCard(){
+  if(pendingAutoDir)return; // выбор предрешён — без карточек
   const i=models.length-1;
   document.getElementById('welcomeCards').appendChild(makeWelcomeCard(models[i],i));
   document.getElementById('welcomeSub').textContent='Загрузка коллекций… найдено: '+models.length;
 }
-function showWelcome(){renderWelcome();document.getElementById('welcomeOverlay').classList.add('visible');}
+function showWelcome(){pendingAutoDir=null;renderWelcome();document.getElementById('welcomeOverlay').classList.add('visible');}
 function hideWelcome(){document.getElementById('welcomeOverlay').classList.remove('visible');}
 // Первый запуск — экран выбора; дальше помним выбор и стартуем сразу
 function afterModelsLoaded(){
+  if(appState==='play')return; // игра уже идёт (мгновенный старт без картинок)
   let last=null;
   try{last=localStorage.getItem('checkersLast');}catch(_){}
   if(last!==null){
@@ -1386,7 +1395,12 @@ document.getElementById('logOverlay').addEventListener('click',e=>{
 
 // ── Старт ──
 setupGame();buildBoard();render();
-startWelcomeLoading();
+(function(){
+  let saved=null;
+  try{saved=localStorage.getItem('checkersLast');}catch(_){}
+  if(saved===''){startPlay(-1);}     // без картинок: играем сразу, коллекции грузятся в фоне
+  else startWelcomeLoading();
+})();
 initModels();
 </script>
 </body>
