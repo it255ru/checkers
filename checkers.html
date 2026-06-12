@@ -285,6 +285,9 @@ const SETTINGS = {
   fallbackDirs: [],
   // Единственное обязательное взятие у белых выполняется автоматически
   autoForcedMove: true,
+  // Безнадёжная позиция (доказанный форсированный выигрыш соперника)
+  // засчитывается как поражение досрочно
+  autoResign: true,
 };
 /* ═══════════════════════════════════════════════════════ */
 
@@ -875,7 +878,7 @@ function macroNotation(m){
 
 let G={board:null,turn:1,over:false,lastFrom:null,lastTo:null,lastPath:[],lastCaps:[],
   chainMode:false,chainPos:null,chainBeaten:[],chainMoves:[],chainPath:[],
-  deadSet:new Set(),gameId:0,quietCount:0};
+  deadSet:new Set(),gameId:0,quietCount:0,hopelessWhite:false};
 let selected=null,validMoves=[],busy=false;
 let hintFrom=null,hintTos=[]; // подсветка подсказки для белых
 
@@ -885,7 +888,7 @@ function setupGame(){
   for(let r=5;r<8;r++)for(let c=0;c<8;c++)if((r+c)%2===1)G.board[r][c]=1;
   G.turn=1;G.over=false;G.lastFrom=null;G.lastTo=null;G.lastPath=[];G.lastCaps=[];
   G.chainMode=false;G.chainPos=null;G.chainBeaten=[];G.chainMoves=[];
-  G.deadSet=new Set();G.gameId++;G.quietCount=0;G.chainPath=[];
+  G.deadSet=new Set();G.gameId++;G.quietCount=0;G.chainPath=[];G.hopelessWhite=false;
   selected=null;validMoves=[];busy=false;
   hintFrom=null;hintTos=[];
   halfMoveNo=0;
@@ -1111,6 +1114,7 @@ function doAITurn(){
       .slice(0,5);
     logLine('  оценки (глубина '+ev.depth+'): '
       +macros.map((m,i)=>i+'.'+macroNotation(m)+'='+ev.scores[i].toFixed(1)).join('; '));
+    G.hopelessWhite=cand[0].score<=-900; // выигрыш чёрных доказан до конца
     if(cand.length===1){
       move=cand[0].m;
       logLine('  движок: безопасен только '+macroNotation(move));
@@ -1182,6 +1186,10 @@ function finishAITurn(){
   if(end!==0){showResult(end);busy=false;return;}
   if(G.quietCount>=QUIET_LIMIT){showResult(2);busy=false;return;}
   if(!getAllMoves(G.board,1).length){showResult(-1);busy=false;return;}
+  if(SETTINGS.autoResign&&G.hopelessWhite){
+    logLine('  (досрочно: позиция белых безнадёжна, выигрыш чёрных форсирован)');
+    showResult(-1);busy=false;return;
+  }
   setStatus('player');busy=false;
   maybeAutoMove();
 }
@@ -1231,7 +1239,9 @@ function showResult(winner){
   logLine('РЕЗУЛЬТАТ: '+(winner===1?'победа белых':winner===2?'ничья (правило 30 ходов)':'победа чёрных'));
   setStatus(winner===1?'win':winner===2?'draw':'lose');
   if(winner===2)showResultOverlay('🤝 Ничья<small>30 ходов дамками подряд<br>без взятий и продвижения простых</small>',2000);
-  else if(winner===-1)showResultOverlay('Поражение<small>Сейчас начнётся новая партия…</small>',2000);
+  else if(winner===-1)showResultOverlay(G.hopelessWhite
+    ?'Поражение<small>Позиция безнадёжна: у чёрных форсированный выигрыш.<br>Сейчас начнётся новая партия…</small>'
+    :'Поражение<small>Сейчас начнётся новая партия…</small>',2200);
   const m=activeModel();
   const total=m?m.images.length:1;
   if(winner===1){
