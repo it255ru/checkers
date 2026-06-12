@@ -3,8 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#1a1a2e">
 <title>Шашки</title>
 <style>
+:root{color-scheme:dark}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1a1a2e;overflow:hidden}
 .wrap{display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;gap:20px;padding:10px}
@@ -1070,6 +1073,12 @@ function doAITurn(){
     if(cand.length===1){
       move=cand[0].m;
       logLine('  движок: безопасен только '+macroNotation(move));
+    }else if(Math.abs(cand[0].score)>=900){
+      // Форсированный исход (победа/поражение видны до конца):
+      // никакой случайности — строго лучший ход. Проигрывая — максимально
+      // упорная защита, выигрывая — кратчайший путь к победе.
+      move=cand[0].m;
+      logLine('  движок: форсированный вариант → '+macroNotation(move));
     }else{
       move=cand[Math.floor(Math.random()*cand.length)].m;
       logLine('  кандидаты: '+cand.map((c,i)=>i+'.'+macroNotation(c.m)+'='+c.score.toFixed(1)).join('; '));
