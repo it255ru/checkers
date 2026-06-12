@@ -94,29 +94,36 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
     width:min(calc(94vw - 40px),calc(100vh - 220px));
     height:min(calc(94vw - 40px),calc(100vh - 220px));
   }
-  .logos-panel{max-height:none;width:94vw;grid-template-columns:repeat(auto-fill,50px);justify-content:center;position:static}
-  .logos-panel.hidden{display:none}
+  .welcome-card img{width:84px;height:84px}
   .pic-col{width:min(94vw,320px);position:static}
   .pic-col.hidden{display:none}
 }
 
 
-/* ── Панель выбора: матрица логотипов 3 колонки ── */
-.logos-panel{
-  display:grid;grid-template-columns:repeat(3,50px);gap:10px;
-  align-content:start;flex-shrink:0;
-  max-height:calc(100vh - 40px);overflow-y:auto;padding:4px;
-  scrollbar-width:thin;scrollbar-color:#444 transparent;
-  transition:opacity .35s;
+/* ── Экран выбора коллекции ── */
+.welcome-overlay{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(10,10,25,.78);z-index:80;
 }
-.logos-panel.hidden{opacity:0;pointer-events:none;position:absolute;left:-9999px}
-.logo-btn{
-  width:50px;height:50px;object-fit:cover;border-radius:8px;
-  cursor:pointer;border:2px solid rgba(255,255,255,.15);
-  transition:border-color .2s,box-shadow .2s,transform .15s;
-  box-shadow:0 2px 8px rgba(0,0,0,.5);
+.welcome-overlay.visible{display:flex;animation:resultIn .25s ease}
+.welcome-box{
+  background:#16213e;border:1px solid rgba(255,255,255,.15);border-radius:18px;
+  padding:30px 36px;max-width:min(92vw,640px);max-height:88vh;overflow-y:auto;
+  display:flex;flex-direction:column;align-items:center;gap:18px;
+  box-shadow:0 14px 60px rgba(0,0,0,.7);
 }
-.logo-btn:hover{border-color:#4ecca3;box-shadow:0 0 12px rgba(78,204,163,.6);transform:scale(1.1)}
+.welcome-title{font-size:1.6em;font-weight:bold;color:#ffd700;letter-spacing:.02em}
+.welcome-sub{color:#9ab;text-align:center;line-height:1.45;font-size:.95em}
+.welcome-cards{display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+.welcome-card{
+  display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;
+  border:2px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 10px 8px;
+  background:rgba(255,255,255,.03);
+  transition:border-color .2s,transform .15s,box-shadow .2s;
+}
+.welcome-card:hover{border-color:#4ecca3;transform:translateY(-3px);box-shadow:0 6px 20px rgba(78,204,163,.25)}
+.welcome-card img{width:110px;height:110px;object-fit:cover;border-radius:8px}
+.welcome-card span{color:#dde;font-size:.85em}
 .logos-loading{color:#888;font-size:.82em;grid-column:span 3;text-align:center;padding:8px 0}
 
 /* ── Игровая панель (картинка из каталога) ── */
@@ -230,11 +237,6 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
     </div>
   </div>
 
-  <!-- Экран выбора: матрица логотипов -->
-  <div class="logos-panel" id="logosPanel">
-    <div class="logos-loading" id="logosLoading">Поиск моделей…</div>
-  </div>
-
   <!-- Игровая панель: картинка из каталога -->
   <div class="pic-col hidden" id="picCol">
     <div class="pic-wrap" id="picWrap"></div>
@@ -266,6 +268,16 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 
 <!-- Результат партии -->
 <div class="result-overlay" id="resultOverlay"><div class="result-box" id="resultBox"></div></div>
+
+<!-- Экран выбора коллекции (первый запуск / кнопка «К выбору») -->
+<div class="welcome-overlay" id="welcomeOverlay">
+  <div class="welcome-box">
+    <div class="welcome-title">Русские шашки</div>
+    <div class="welcome-sub" id="welcomeSub">Выберите коллекцию — каждая победа открывает новую картинку</div>
+    <div class="welcome-cards" id="welcomeCards"></div>
+    <button class="gallery-btn" id="welcomeNoPic">Играть без картинок</button>
+  </div>
+</div>
 
 <!-- Лайтбокс -->
 <div class="lightbox" id="lightbox">
@@ -381,7 +393,7 @@ async function initModels(){
           if(images.length)models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
         }
       }
-      if(models.length){renderLogoPanel();return;}
+      if(models.length){afterModelsLoaded();return;}
     }
   }catch(_){}
   // Фолбэк: автопоиск каталогов model1..model99 (локальное использование)
@@ -402,37 +414,44 @@ async function initModels(){
     if(!images.length)continue;
     models.push({dir:info.dir,logoUrl:info.logoUrl,images});
   }
-  renderLogoPanel();
+  afterModelsLoaded();
 }
 
 // ── Рисуем матрицу логотипов ──
-function renderLogoPanel(){
-  const panel=document.getElementById('logosPanel');
-  panel.innerHTML='';
+function renderWelcome(){
+  const cards=document.getElementById('welcomeCards');
+  cards.innerHTML='';
   if(!models.length){
-    const box=document.createElement('div');
-    box.className='logos-loading';
-    box.innerHTML='Каталоги с картинками не найдены.<br><br>'
-      +'Ожидаемая структура рядом с HTML-файлом:<br>'
-      +'<code>media/model1/logo.jpg</code><br>'
-      +'<code>media/model1/00.jpg, 01.jpg…</code><br><br>';
-    const btn=document.createElement('button');
-    btn.className='gallery-btn';
-    btn.textContent='Играть без картинок';
-    btn.addEventListener('click',()=>startPlay(-1));
-    panel.appendChild(box);
-    box.appendChild(btn);
+    document.getElementById('welcomeSub').innerHTML=
+      'Каталоги с картинками не найдены — можно играть и так.<br>'
+      +'Для коллекций положите рядом с HTML-файлом:<br>'
+      +'<code>media/model1/logo.jpg</code> и <code>media/model1/00.jpg, 01.jpg…</code>';
     return;
   }
   models.forEach((m,i)=>{
+    const card=document.createElement('div');
+    card.className='welcome-card';
     const img=document.createElement('img');
-    img.src=m.logoUrl;
-    img.alt=m.dir;
-    img.title=m.dir;
-    img.className='logo-btn';
-    img.addEventListener('click',()=>startPlay(i));
-    panel.appendChild(img);
+    img.src=m.logoUrl;img.alt=m.dir;
+    const cap=document.createElement('span');
+    cap.textContent=m.dir;
+    card.appendChild(img);card.appendChild(cap);
+    card.addEventListener('click',()=>startPlay(i));
+    cards.appendChild(card);
   });
+}
+function showWelcome(){renderWelcome();document.getElementById('welcomeOverlay').classList.add('visible');}
+function hideWelcome(){document.getElementById('welcomeOverlay').classList.remove('visible');}
+// Первый запуск — экран выбора; дальше помним выбор и стартуем сразу
+function afterModelsLoaded(){
+  let last=null;
+  try{last=localStorage.getItem('checkersLast');}catch(_){}
+  if(last!==null){
+    if(last===''){startPlay(-1);return;}
+    const i=models.findIndex(m=>m.dir===last);
+    if(i>=0){startPlay(i);return;}
+  }
+  showWelcome();
 }
 
 // ── Переход: выбор → игра (idx=-1 — без картинок) ──
@@ -442,7 +461,8 @@ function startPlay(idx){
   const saved=m?(loadProgress()[m.dir]||0):0;
   imgIdx=m?Math.min(saved,m.images.length-1):0;
   appState='play';
-  document.getElementById('logosPanel').classList.add('hidden');
+  hideWelcome();
+  try{localStorage.setItem('checkersLast',m?m.dir:'');}catch(_){}
   document.querySelector('.wrap').classList.toggle('solo',!m);
   if(m){
     buildPicPanel();
@@ -460,7 +480,7 @@ function goToSelect(){
   document.querySelector('.wrap').classList.remove('solo');
   document.getElementById('picCol').classList.add('hidden');
   document.getElementById('ctrlRow').classList.add('hidden');
-  document.getElementById('logosPanel').classList.remove('hidden');
+  showWelcome();
   setStatus('');
   setupGame();render();
 }
@@ -1309,6 +1329,7 @@ document.getElementById('btnHint').addEventListener('click',()=>{
   logLine('  💡 подсказка белым: '+macroNotation(move));
   render();
 });
+document.getElementById('welcomeNoPic').addEventListener('click',()=>startPlay(-1));
 document.getElementById('btnLog').addEventListener('click',()=>{
   document.getElementById('logText').value=gameLog.join('\n')||'Журнал пуст — сделайте хотя бы один ход.';
   document.getElementById('logOverlay').classList.add('visible');
