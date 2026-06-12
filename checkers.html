@@ -124,6 +124,13 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 .welcome-card:hover{border-color:#4ecca3;transform:translateY(-3px);box-shadow:0 6px 20px rgba(78,204,163,.25)}
 .welcome-card img{width:110px;height:110px;object-fit:cover;border-radius:8px}
 .welcome-card span{color:#dde;font-size:.85em}
+.welcome-spin{
+  width:34px;height:34px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.15);border-top-color:#4ecca3;
+  animation:wspin .8s linear infinite;
+}
+.welcome-spin.hidden{display:none}
+@keyframes wspin{to{transform:rotate(360deg)}}
 .logos-loading{color:#888;font-size:.82em;grid-column:span 3;text-align:center;padding:8px 0}
 
 /* ── Игровая панель (картинка из каталога) ── */
@@ -274,6 +281,7 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
   <div class="welcome-box">
     <div class="welcome-title">Русские шашки</div>
     <div class="welcome-sub" id="welcomeSub">Выберите коллекцию — каждая победа открывает новую картинку</div>
+    <div class="welcome-spin hidden" id="welcomeSpin"></div>
     <div class="welcome-cards" id="welcomeCards"></div>
     <button class="gallery-btn" id="welcomeNoPic">Играть без картинок</button>
   </div>
@@ -381,7 +389,10 @@ async function initModels(){
         for(const dir of data){
           if(!okDir(dir))continue;
           const images=await scanModelImages(dir);
-          if(images.length)models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+          if(images.length){
+            models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+            addWelcomeCard();
+          }
         }
       }else if(data&&typeof data==='object'){
         for(const dir of Object.keys(data)){
@@ -390,7 +401,10 @@ async function initModels(){
             .filter(okFile)
             .filter(f=>f.toLowerCase()!=='logo.jpg')
             .map(fn=>({img:dir+'/'+fn,caption:''}));
-          if(images.length)models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+          if(images.length){
+            models.push({dir:dir,logoUrl:SETTINGS.folder+dir+'/logo.jpg',images:images});
+            addWelcomeCard();
+          }
         }
       }
       if(models.length){afterModelsLoaded();return;}
@@ -413,14 +427,27 @@ async function initModels(){
     const images=await scanModelImages(info.dir);
     if(!images.length)continue;
     models.push({dir:info.dir,logoUrl:info.logoUrl,images});
+    addWelcomeCard();
   }
   afterModelsLoaded();
 }
 
 // ── Рисуем матрицу логотипов ──
+function makeWelcomeCard(m,i){
+  const card=document.createElement('div');
+  card.className='welcome-card';
+  const img=document.createElement('img');
+  img.src=m.logoUrl;img.alt=m.dir;
+  const cap=document.createElement('span');
+  cap.textContent=m.dir;
+  card.appendChild(img);card.appendChild(cap);
+  card.addEventListener('click',()=>startPlay(i));
+  return card;
+}
 function renderWelcome(){
   const cards=document.getElementById('welcomeCards');
   cards.innerHTML='';
+  document.getElementById('welcomeSpin').classList.add('hidden');
   if(!models.length){
     document.getElementById('welcomeSub').innerHTML=
       'Каталоги с картинками не найдены — можно играть и так.<br>'
@@ -428,17 +455,21 @@ function renderWelcome(){
       +'<code>media/model1/logo.jpg</code> и <code>media/model1/00.jpg, 01.jpg…</code>';
     return;
   }
-  models.forEach((m,i)=>{
-    const card=document.createElement('div');
-    card.className='welcome-card';
-    const img=document.createElement('img');
-    img.src=m.logoUrl;img.alt=m.dir;
-    const cap=document.createElement('span');
-    cap.textContent=m.dir;
-    card.appendChild(img);card.appendChild(cap);
-    card.addEventListener('click',()=>startPlay(i));
-    cards.appendChild(card);
-  });
+  document.getElementById('welcomeSub').textContent=
+    'Выберите коллекцию — каждая победа открывает новую картинку';
+  models.forEach((m,i)=>cards.appendChild(makeWelcomeCard(m,i)));
+}
+// Режим загрузки: экран виден сразу, карточки появляются по мере обнаружения
+function startWelcomeLoading(){
+  document.getElementById('welcomeSub').textContent='Загрузка коллекций…';
+  document.getElementById('welcomeSpin').classList.remove('hidden');
+  document.getElementById('welcomeCards').innerHTML='';
+  document.getElementById('welcomeOverlay').classList.add('visible');
+}
+function addWelcomeCard(){
+  const i=models.length-1;
+  document.getElementById('welcomeCards').appendChild(makeWelcomeCard(models[i],i));
+  document.getElementById('welcomeSub').textContent='Загрузка коллекций… найдено: '+models.length;
 }
 function showWelcome(){renderWelcome();document.getElementById('welcomeOverlay').classList.add('visible');}
 function hideWelcome(){document.getElementById('welcomeOverlay').classList.remove('visible');}
@@ -451,7 +482,7 @@ function afterModelsLoaded(){
     const i=models.findIndex(m=>m.dir===last);
     if(i>=0){startPlay(i);return;}
   }
-  showWelcome();
+  showWelcome(); // перерисовка снимает спиннер и ставит обычный подзаголовок
 }
 
 // ── Переход: выбор → игра (idx=-1 — без картинок) ──
@@ -1355,6 +1386,7 @@ document.getElementById('logOverlay').addEventListener('click',e=>{
 
 // ── Старт ──
 setupGame();buildBoard();render();
+startWelcomeLoading();
 initModels();
 </script>
 </body>
