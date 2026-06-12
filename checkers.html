@@ -126,8 +126,13 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 .welcome-card span{color:#dde;font-size:.85em}
 .welcome-card.last{border-color:#ffd700;box-shadow:0 0 14px rgba(255,215,0,.25)}
 .gallery-btn.hidden{display:none}
-.welcome-secondary{background:transparent;color:#9ab;border:1px solid rgba(255,255,255,.25)}
-.welcome-secondary:hover{background:rgba(255,255,255,.08);color:#dde}
+.welcome-box .gallery-btn.welcome-secondary{
+  background:transparent;color:#9ab;border:1px solid rgba(255,255,255,.25);
+}
+.welcome-box .gallery-btn.welcome-secondary:hover{
+  background:rgba(255,255,255,.1);color:#fff;transform:none;
+}
+.welcome-ver{color:#566;font-size:.7em;margin-top:-6px;user-select:all}
 .welcome-spin{
   width:34px;height:34px;border-radius:50%;
   border:3px solid rgba(255,255,255,.15);border-top-color:#4ecca3;
@@ -289,6 +294,7 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
     <div class="welcome-cards" id="welcomeCards"></div>
     <button class="gallery-btn hidden" id="welcomeContinue"></button>
     <button class="gallery-btn welcome-secondary" id="welcomeNoPic">Играть без картинок</button>
+    <div class="welcome-ver" id="welcomeVer"></div>
   </div>
 </div>
 
@@ -304,6 +310,7 @@ html,body{width:100%;height:100%;font-family:'Segoe UI',sans-serif;background:#1
 /* ═══════════════════════════════════════════════════════
    НАСТРОЙКИ
    ═══════════════════════════════════════════════════════ */
+const APP_VERSION='2026.06.12-1'; // обновляйте при каждой публикации — видно на экране выбора
 const SETTINGS = {
   folder: "media/",
   // Резервный список каталогов (если сервер не отдаёт листинг)
@@ -1380,6 +1387,7 @@ document.getElementById('btnHint').addEventListener('click',()=>{
   render();
 });
 document.getElementById('welcomeNoPic').addEventListener('click',()=>startPlay(-1));
+document.getElementById('welcomeVer').textContent='версия '+APP_VERSION;
 document.getElementById('btnLog').addEventListener('click',()=>{
   document.getElementById('logText').value=gameLog.join('\n')||'Журнал пуст — сделайте хотя бы один ход.';
   document.getElementById('logOverlay').classList.add('visible');
